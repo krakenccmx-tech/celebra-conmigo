@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -12,30 +17,33 @@ export async function GET(request: Request) {
   }
 
   try {
-    const event = await prisma.event.findUnique({
-      where: { slug },
-      include: {
-        sections: {
-          where: { isActive: true },
-          orderBy: { sortOrder: 'asc' },
-        },
-        gifts: true,
-        gallery: {
-          where: { isApproved: true },
-          orderBy: { createdAt: 'desc' },
-        },
-      },
-    });
+    const { data: event, error } = await supabase
+      .from('events')
+      .select('*, event_sections(*), gift_options(*), gallery_items(*)')
+      .eq('slug', slug)
+      .eq('status', 'published')
+      .single();
 
-    if (!event) {
+    if (error || !event) {
       return NextResponse.json({ error: 'Evento no encontrado.' }, { status: 404 });
     }
 
-    if (event.status !== 'published') {
-      return NextResponse.json({ error: 'Evento no publicado.' }, { status: 403 });
-    }
+    // Transform to match expected format
+    const result = {
+      ...event,
+      sections: (event.event_sections || [])
+        .filter((s: any) => s.is_active)
+        .sort((a: any, b: any) => a.sort_order - b.sort_order),
+      gifts: event.gift_options || [],
+      gallery: (event.gallery_items || [])
+        .filter((g: any) => g.is_approved),
+    };
 
-    return NextResponse.json(event);
+    delete result.event_sections;
+    delete result.gift_options;
+    delete result.gallery_items;
+
+    return NextResponse.json(result);
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Error interno' }, { status: 500 });
   }
