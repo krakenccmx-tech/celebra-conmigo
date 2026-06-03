@@ -1,78 +1,94 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { getSession } from '@/lib/auth';
+import { createClient } from '@/lib/supabase/server';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const user = await getSession();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
   if (!user) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  const dbUser = await prisma.user.findUnique({
-    where: { email: user.email! },
-  });
+  const { data: dbUser } = await supabaseAdmin
+    .from('users')
+    .select('id, role')
+    .eq('email', user.email!)
+    .single();
 
   if (!dbUser) {
     return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
   }
 
-  const events = await prisma.event.findMany({
-    where: dbUser.role === 'superadmin' ? {} : { userId: dbUser.id },
-    include: {
-      _count: { select: { guests: true, rsvps: true } },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+  let query = supabaseAdmin
+    .from('events')
+    .select('*, guests(count), rsvps(count)')
+    .order('created_at', { ascending: false });
+
+  if (dbUser.role !== 'superadmin') {
+    query = query.eq('user_id', dbUser.id);
+  }
+
+  const { data: events, error } = await query;
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   return NextResponse.json(events);
 }
 
 export async function POST(request: Request) {
-  const user = await getSession();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
   if (!user) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  const dbUser = await prisma.user.findUnique({
-    where: { email: user.email! },
-  });
+  const { data: dbUser } = await supabaseAdmin
+    .from('users')
+    .select('id')
+    .eq('email', user.email!)
+    .single();
 
   if (!dbUser) {
     return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
   }
 
   const body = await request.json();
-  const { title, type, date, time, city, slug } = body;
+  const { title, type, date, time, city } = body;
 
-  if (!title || !type || !date || !time || !city || !slug) {
+  if (!title || !type || !date || !time || !city) {
     return NextResponse.json(
       { error: 'Todos los campos son requeridos.' },
       { status: 400 }
     );
   }
 
-  const existing = await prisma.event.findUnique({ where: { slug } });
-  if (existing) {
-    return NextResponse.json(
-      { error: 'El slug ya está en uso. Elige otro.' },
-      { status: 409 }
-    );
-  }
+  const randomSuffix = Math.random().toString(36).substring(2, 8);
+  const slug = `${title.toLowerCase().replace(/\s+/g, '-')}-${randomSuffix}`;
 
-  const event = await prisma.event.create({
-    data: {
-      userId: dbUser.id,
+  const { data: event, error } = await supabaseAdmin
+    .from('events')
+    .insert({
+      user_id: dbUser.id,
       title,
       slug,
       type,
-      date: new Date(date),
+      date,
       time,
       city,
       status: 'draft',
-    },
-  });
+    })
+    .select()
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   return NextResponse.json(event, { status: 201 });
 }

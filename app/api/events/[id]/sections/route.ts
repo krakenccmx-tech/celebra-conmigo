@@ -1,64 +1,46 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { getSession } from '@/lib/auth';
+import { supabaseAdmin } from '@/lib/supabase-admin';
+import { createClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
-interface Params {
-  params: Promise<{ id: string }>;
-}
+export async function GET(request: Request) {
+  const id = new URL(request.url).pathname.split('/').filter(Boolean)[2];
 
-export async function GET(_request: Request, { params }: Params) {
-  const { id } = await params;
+  const { data: sections, error } = await supabaseAdmin
+    .from('event_sections')
+    .select('*')
+    .eq('event_id', id)
+    .order('sort_order', { ascending: true });
 
-  const sections = await prisma.eventSection.findMany({
-    where: { eventId: id },
-    orderBy: { sortOrder: 'asc' },
-  });
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   return NextResponse.json(sections);
 }
 
-export async function POST(request: Request, { params }: Params) {
-  const user = await getSession();
+export async function PUT(request: Request) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
   if (!user) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  const { id } = await params;
+  const id = new URL(request.url).pathname.split('/').filter(Boolean)[2];
   const body = await request.json();
-  const { type, title, content, imageUrl, isActive, sortOrder } = body;
-
-  if (!type || !title) {
-    return NextResponse.json(
-      { error: 'Tipo y título son requeridos.' },
-      { status: 400 }
-    );
-  }
-
-  const section = await prisma.eventSection.create({
-    data: {
-      eventId: id,
-      type,
-      title,
-      content: content || null,
-      imageUrl: imageUrl || null,
-      isActive: isActive ?? true,
-      sortOrder: sortOrder ?? 0,
-    },
-  });
-
-  return NextResponse.json(section, { status: 201 });
-}
-
-export async function PUT(request: Request, { params }: Params) {
-  const user = await getSession();
-  if (!user) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  }
-
-  const body = await request.json();
-  const { sections } = body as { sections: Array<{ id: string; type: string; title: string; content?: string; imageUrl?: string; isActive?: boolean; sortOrder?: number }> };
+  const { sections } = body as {
+    sections: Array<{
+      id?: string;
+      type: string;
+      title: string;
+      content?: string;
+      image_url?: string;
+      is_active?: boolean;
+      sort_order?: number;
+    }>;
+  };
 
   if (!sections || !Array.isArray(sections)) {
     return NextResponse.json(
@@ -67,30 +49,37 @@ export async function PUT(request: Request, { params }: Params) {
     );
   }
 
-  const updates = sections.map((s) =>
-    prisma.eventSection.upsert({
-      where: { id: s.id || 'new-' + Math.random() },
-      update: {
-        type: s.type,
-        title: s.title,
-        content: s.content || null,
-        imageUrl: s.imageUrl || null,
-        isActive: s.isActive ?? true,
-        sortOrder: s.sortOrder ?? 0,
-      },
-      create: {
-        eventId: (params as unknown as { id: string }).id,
-        type: s.type,
-        title: s.title,
-        content: s.content || null,
-        imageUrl: s.imageUrl || null,
-        isActive: s.isActive ?? true,
-        sortOrder: s.sortOrder ?? 0,
-      },
-    })
-  );
+  const results = [];
 
-  const results = await prisma.$transaction(updates);
+  for (const s of sections) {
+    const row = {
+      event_id: id,
+      type: s.type,
+      title: s.title,
+      content: s.content || null,
+      image_url: s.image_url || null,
+      is_active: s.is_active ?? true,
+      sort_order: s.sort_order ?? 0,
+    };
+
+    const { data, error } = s.id
+      ? await supabaseAdmin
+          .from('event_sections')
+          .upsert({ id: s.id, ...row })
+          .select()
+          .single()
+      : await supabaseAdmin
+          .from('event_sections')
+          .insert(row)
+          .select()
+          .single();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    results.push(data);
+  }
 
   return NextResponse.json(results);
 }

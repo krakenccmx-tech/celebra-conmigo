@@ -1,95 +1,80 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { getSession } from '@/lib/auth';
-
 export const dynamic = 'force-dynamic';
 
-interface Params {
-  params: Promise<{ id: string }>;
-}
+import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
-export async function GET(_request: Request, { params }: Params) {
-  const { id } = await params;
+export async function GET(request: Request) {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-  const gifts = await prisma.giftOption.findMany({
-    where: { eventId: id },
-  });
+    if (authError || !user) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
 
-  return NextResponse.json(gifts);
-}
+    const id = new URL(request.url).pathname.split('/')[3];
 
-export async function POST(request: Request, { params }: Params) {
-  const user = await getSession();
-  if (!user) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  }
+    const { data: gifts, error } = await supabaseAdmin
+      .from('gift_options')
+      .select('*')
+      .eq('event_id', id)
+      .order('created_at', { ascending: false });
 
-  const { id } = await params;
-  const body = await request.json();
-  const { type, title, description, url, bankData } = body;
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
 
-  if (!type || !title) {
+    return NextResponse.json(gifts);
+  } catch {
     return NextResponse.json(
-      { error: 'Tipo y título son requeridos.' },
-      { status: 400 }
+      { error: 'Error al obtener opciones de regalo' },
+      { status: 500 }
     );
   }
-
-  const gift = await prisma.giftOption.create({
-    data: {
-      eventId: id,
-      type,
-      title,
-      description: description || null,
-      url: url || null,
-      bankData: bankData || null,
-    },
-  });
-
-  return NextResponse.json(gift, { status: 201 });
 }
 
-export async function PUT(request: Request, { params }: Params) {
-  const user = await getSession();
-  if (!user) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+export async function POST(request: Request) {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
+
+    const id = new URL(request.url).pathname.split('/')[3];
+    const body = await request.json();
+    const { type, title, description, url } = body;
+
+    if (!type || !title) {
+      return NextResponse.json(
+        { error: 'Tipo y título son requeridos.' },
+        { status: 400 }
+      );
+    }
+
+    const { data: gift, error } = await supabaseAdmin
+      .from('gift_options')
+      .insert({
+        event_id: id,
+        type,
+        title,
+        description: description || null,
+        url: url || null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json(gift, { status: 201 });
+  } catch {
+    return NextResponse.json(
+      { error: 'Error al crear opción de regalo' },
+      { status: 500 }
+    );
   }
-
-  const body = await request.json();
-  const { giftId, type, title, description, url, bankData } = body;
-
-  if (!giftId) {
-    return NextResponse.json({ error: 'Se requiere giftId.' }, { status: 400 });
-  }
-
-  const updated = await prisma.giftOption.update({
-    where: { id: giftId },
-    data: {
-      type: type ?? undefined,
-      title: title ?? undefined,
-      description: description ?? undefined,
-      url: url ?? undefined,
-      bankData: bankData ?? undefined,
-    },
-  });
-
-  return NextResponse.json(updated);
-}
-
-export async function DELETE(request: Request, { params }: Params) {
-  const user = await getSession();
-  if (!user) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  }
-
-  const { searchParams } = new URL(request.url);
-  const giftId = searchParams.get('giftId');
-
-  if (!giftId) {
-    return NextResponse.json({ error: 'Se requiere giftId.' }, { status: 400 });
-  }
-
-  await prisma.giftOption.delete({ where: { id: giftId } });
-
-  return NextResponse.json({ success: true });
 }

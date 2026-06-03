@@ -1,38 +1,40 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { getSession } from '@/lib/auth';
-import { randomBytes } from 'crypto';
+import { createClient } from '@/lib/supabase/server';
+import { supabaseAdmin } from '@/lib/supabase-admin';
+import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
-interface Params {
-  params: Promise<{ id: string }>;
-}
-
-export async function GET(_request: Request, { params }: Params) {
-  const user = await getSession();
+export async function GET(request: Request) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  const { id } = await params;
+  const id = new URL(request.url).pathname.split('/')[3];
 
-  const guests = await prisma.guest.findMany({
-    where: { eventId: id },
-    include: { rsvp: true },
-    orderBy: { createdAt: 'desc' },
-  });
+  const { data: guests, error } = await supabaseAdmin
+    .from('guests')
+    .select('*, rsvps(*)')
+    .eq('event_id', id)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   return NextResponse.json(guests);
 }
 
-export async function POST(request: Request, { params }: Params) {
-  const user = await getSession();
+export async function POST(request: Request) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  const { id } = await params;
+  const id = new URL(request.url).pathname.split('/')[3];
   const body = await request.json();
   const { name, email, phone, maxCompanions, tableName } = body;
 
@@ -43,31 +45,38 @@ export async function POST(request: Request, { params }: Params) {
     );
   }
 
-  const token = randomBytes(6).toString('hex').toUpperCase();
+  const token = crypto.randomUUID();
 
-  const guest = await prisma.guest.create({
-    data: {
-      eventId: id,
+  const { data: guest, error } = await supabaseAdmin
+    .from('guests')
+    .insert({
+      event_id: id,
       name,
       email: email || null,
       phone: phone || null,
-      maxCompanions: maxCompanions || 0,
-      tableName: tableName || null,
+      max_companions: maxCompanions || 0,
+      table_name: tableName || null,
       token,
-    },
-  });
+    })
+    .select()
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   return NextResponse.json(guest, { status: 201 });
 }
 
-export async function DELETE(request: Request, { params }: Params) {
-  const user = await getSession();
+export async function DELETE(request: Request) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  const { searchParams } = new URL(request.url);
-  const guestId = searchParams.get('guestId');
+  const body = await request.json();
+  const { guestId } = body;
 
   if (!guestId) {
     return NextResponse.json(
@@ -76,7 +85,14 @@ export async function DELETE(request: Request, { params }: Params) {
     );
   }
 
-  await prisma.guest.delete({ where: { id: guestId } });
+  const { error } = await supabaseAdmin
+    .from('guests')
+    .delete()
+    .eq('id', guestId);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   return NextResponse.json({ success: true });
 }

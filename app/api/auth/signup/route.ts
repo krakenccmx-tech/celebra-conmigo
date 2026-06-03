@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
-import { prisma } from '@/lib/db';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -30,17 +30,25 @@ export async function POST(request: Request) {
 
   // Create user in our database
   if (data.user) {
-    await prisma.user.upsert({
-      where: { email },
-      update: { name },
-      create: {
-        id: data.user.id,
-        email,
-        name,
-        role: 'client',
-        plan: 'Starter',
-      },
-    });
+    const { error: dbError } = await supabaseAdmin
+      .from('users')
+      .upsert(
+        {
+          id: data.user.id,
+          email,
+          name,
+          role: 'client',
+          plan: 'Starter',
+        },
+        { onConflict: 'email' }
+      );
+
+    if (dbError) {
+      return NextResponse.json(
+        { error: 'Error al crear usuario en la base de datos.' },
+        { status: 500 }
+      );
+    }
   }
 
   return NextResponse.json({ success: true, user: data.user });

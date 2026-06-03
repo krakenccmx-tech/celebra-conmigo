@@ -1,25 +1,30 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const dbUrl = process.env.DATABASE_URL;
-  const info: any = {
-    hasDbUrl: !!dbUrl,
-    dbUrlPrefix: dbUrl ? dbUrl.substring(0, 30) + '...' : 'MISSING',
-  };
-
   try {
-    const prisma = new PrismaClient();
-    const count = await prisma.event.count();
-    info.connected = true;
-    info.eventCount = count;
-    await prisma.$disconnect();
-  } catch (err: any) {
-    info.connected = false;
-    info.error = err.message;
-  }
+    const { count, error } = await supabaseAdmin
+      .from('events')
+      .select('*', { count: 'exact', head: true });
 
-  return NextResponse.json(info);
+    if (error) {
+      return NextResponse.json({
+        connected: false,
+        error: error.message,
+      });
+    }
+
+    return NextResponse.json({
+      connected: true,
+      eventCount: count,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({
+      connected: false,
+      error: message,
+    });
+  }
 }

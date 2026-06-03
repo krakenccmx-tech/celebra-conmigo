@@ -1,20 +1,24 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { getSession } from '@/lib/auth';
+import { createClient } from '@/lib/supabase/server';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
-  const user = await getSession();
-  if (!user) {
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  const dbUser = await prisma.user.findUnique({
-    where: { email: user.email! },
-  });
+  const { data: dbUser, error: userError } = await supabaseAdmin
+    .from('users')
+    .select('id')
+    .eq('email', user.email!)
+    .single();
 
-  if (!dbUser) {
+  if (userError || !dbUser) {
     return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
   }
 
@@ -22,19 +26,30 @@ export async function POST(request: Request) {
   const { planId, amount } = body;
 
   if (!planId || !amount) {
-    return NextResponse.json({ error: 'Plan y monto son requeridos.' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'Plan y monto son requeridos.' },
+      { status: 400 }
+    );
   }
 
-  // Create payment record
-  const payment = await prisma.payment.create({
-    data: {
-      userId: dbUser.id,
-      planId,
+  const { data: payment, error: paymentError } = await supabaseAdmin
+    .from('payments')
+    .insert({
+      user_id: dbUser.id,
+      plan_id: planId,
       provider: 'mercadopago',
       status: 'pending',
       amount,
-    },
-  });
+    })
+    .select('id')
+    .single();
+
+  if (paymentError || !payment) {
+    return NextResponse.json(
+      { error: 'Error al crear el pago' },
+      { status: 500 }
+    );
+  }
 
   // In production, here you would create a MercadoPago preference
   // and return the init_point URL for the checkout

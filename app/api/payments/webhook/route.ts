@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   const body = await request.json();
 
-  // MercadoPago sends notification with type and data.id
   const { type, data } = body;
 
   if (type === 'payment') {
@@ -16,36 +15,37 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing payment ID' }, { status: 400 });
     }
 
-    // In production, verify payment status with MercadoPago API
-    // const mpPayment = await mercadopago.payment.get(paymentId);
-    // For now, simulate approval
+    // Find payment by ID
+    const { data: payment, error: paymentError } = await supabaseAdmin
+      .from('payments')
+      .select('*')
+      .eq('id', paymentId)
+      .single();
 
-    // Find payment by external reference or ID
-    const payment = await prisma.payment.findFirst({
-      where: { id: paymentId },
-      include: { user: true },
-    });
+    if (paymentError || !payment) {
+      return NextResponse.json({ received: true });
+    }
 
-    if (payment && payment.status === 'pending') {
-      // Update payment status
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: { status: 'completed' },
-      });
+    if (payment.status === 'pending') {
+      // Update payment status to completed
+      await supabaseAdmin
+        .from('payments')
+        .update({ status: 'completed' })
+        .eq('id', payment.id);
 
-      // Upgrade user plan
+      // Upgrade user plan based on plan_id
       const planMap: Record<string, string> = {
         'plan-starter': 'Starter',
         'plan-premium': 'Premium',
         'plan-business': 'Business',
       };
 
-      const newPlan = planMap[payment.planId] || 'Premium';
+      const newPlan = planMap[payment.plan_id] || 'Premium';
 
-      await prisma.user.update({
-        where: { id: payment.userId },
-        data: { plan: newPlan },
-      });
+      await supabaseAdmin
+        .from('users')
+        .update({ plan: newPlan })
+        .eq('id', payment.user_id);
     }
   }
 
