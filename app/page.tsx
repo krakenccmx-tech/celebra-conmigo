@@ -26,7 +26,7 @@ import {
 
 const WHATSAPP_LINK =
   "https://wa.me/5215575076281?text=Hola%2C%20me%20interesa%20una%20invitaci%C3%B3n%20digital";
-const DEMO_LINK = "/e?slug=sofia-y-alejandro";
+const DEMO_LINK = "/e?slug=boda-ana-pedro";
 
 const NAV_ITEMS = [
   { label: "Características", href: "#caracteristicas" },
@@ -76,14 +76,14 @@ const FEATURES = [
 ];
 
 const EVENT_TYPES = [
-  { icon: Heart, label: "Bodas" },
-  { icon: Sparkles, label: "XV Años" },
-  { icon: Users, label: "Baby Shower" },
-  { icon: ShieldCheck, label: "Bautizos" },
-  { icon: Calendar, label: "Cumpleaños" },
-  { icon: Award, label: "Graduaciones" },
-  { icon: Building2, label: "Eventos Corporativos" },
-  { icon: Star, label: "Otros" },
+  { icon: Heart, label: "Bodas", slug: "boda-ana-pedro" },
+  { icon: Sparkles, label: "XV Años", slug: "xv-valentina" },
+  { icon: Users, label: "Baby Shower", slug: "baby-shower-sofia" },
+  { icon: ShieldCheck, label: "Bautizos", slug: "bautizo-mateo" },
+  { icon: Calendar, label: "Cumpleaños", slug: "cumple-carlos-30" },
+  { icon: Award, label: "Graduaciones", slug: "graduacion-2026" },
+  { icon: Building2, label: "Eventos Corporativos", slug: "" },
+  { icon: Star, label: "Otros", slug: "" },
 ];
 
 const PLANS = [
@@ -335,9 +335,13 @@ export default function Home() {
             </div>
 
             <div className="mt-16 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:gap-6">
-              {EVENT_TYPES.map((event) => (
-                <div
+              {EVENT_TYPES.map((event) => {
+                const Wrapper = event.slug ? Link : "div";
+                const props = event.slug ? { href: `/e?slug=${event.slug}` } : {};
+                return (
+                <Wrapper
                   key={event.label}
+                  {...(props as any)}
                   className="group flex flex-col items-center gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] p-8 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-[var(--color-gold-light)] hover:shadow-md"
                 >
                   <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--color-gold)]/10 transition-colors group-hover:bg-[var(--color-gold)]/20">
@@ -346,8 +350,12 @@ export default function Home() {
                   <span className="text-sm font-semibold text-[var(--color-soft-black)]">
                     {event.label}
                   </span>
-                </div>
-              ))}
+                  {event.slug && (
+                    <span className="text-[10px] uppercase tracking-wider text-[var(--color-gold)] font-semibold">Ver demo</span>
+                  )}
+                </Wrapper>
+                );
+              })}
             </div>
           </div>
         </section>

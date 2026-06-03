@@ -127,6 +127,33 @@ export default function LoginPage() {
       >
         Crear Cuenta Gratis
       </Link>
+
+      {/* Demo Access */}
+      <div className="relative my-6 text-center">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-[var(--color-border)]" />
+        </div>
+        <span className="relative bg-white px-4 text-[10px] uppercase tracking-wider text-[var(--color-warm-gray)]">
+          Acceso rápido demo
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={() => { setEmail("demo@celebraconmigo.store"); setPassword("Demo2026!"); }}
+          className="w-full inline-flex h-9 items-center justify-center rounded-full border border-[var(--color-border)] text-xs font-medium text-[var(--color-warm-gray)] hover:bg-[var(--color-ivory)] hover:text-[var(--color-soft-black)] transition-colors"
+        >
+          Entrar como Cliente Demo
+        </button>
+        <button
+          type="button"
+          onClick={() => { setEmail("admin@celebraconmigo.store"); setPassword("Admin2026!"); }}
+          className="w-full inline-flex h-9 items-center justify-center rounded-full border border-[var(--color-border)] text-xs font-medium text-[var(--color-warm-gray)] hover:bg-[var(--color-ivory)] hover:text-[var(--color-soft-black)] transition-colors"
+        >
+          Entrar como Super Admin
+        </button>
+      </div>
     </div>
   );
 }
